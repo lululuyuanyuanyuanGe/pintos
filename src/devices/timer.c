@@ -32,14 +32,13 @@ static void real_time_delay (int64_t num, int32_t denom);
 
 /* Global variables for sleeping threads. */
 static struct list sleeping_list;
-static struct lock sleep_lock;
 
 /* Struct representing a sleep timer request. */
 struct timer_sleeper
   {
     struct list_elem elem;       /* To put this struct in the global list. */
     int64_t wakeup_tick;         /* Tick to wake up at. */
-    struct condition cond;       /* Condition variable to signal wakeup. */
+    struct semaphore sema;       /* Semaphore to block/wake the thread. */
   };
 
 /* Sets up the timer to interrupt TIMER_FREQ times per second,
@@ -50,7 +49,6 @@ timer_init (void)
   pit_configure_channel (0, 2, TIMER_FREQ);
   intr_register_ext (0x20, timer_interrupt, "8254 Timer");
   list_init (&sleeping_list);
-  lock_init (&sleep_lock);
 }
 
 /* Calibrates loops_per_tick, used to implement brief delays. */
@@ -105,6 +103,8 @@ timer_sleep (int64_t ticks)
 {
   ASSERT (intr_get_level () == INTR_ON);
 
+  if (ticks <= 0) return;
+
   int64_t start = timer_ticks ();
 
   // Start the sleeper object to track this sleep request
@@ -112,8 +112,8 @@ timer_sleep (int64_t ticks)
 
   // Initialize sleeper
   sleeper.wakeup_tick = start + ticks;
-  cond_init (&sleeper.cond);
-  lock_acquire (&sleep_lock);
+  // Initialize to 0 so it's blocked until sema_up is called
+  sema_init (&sleeper.sema, 0);
 
   // Disable interrupts while modifying the sleeping list
   // to avoid timer_interrupt interfering while sleeper is added.
@@ -123,11 +123,8 @@ timer_sleep (int64_t ticks)
   // timer_interrupt may occur after this point
   intr_set_level (old_level);
 
-  // Wait until wakeup time, being signaled by timer_interrupt
-  while (timer_ticks () < sleeper.wakeup_tick)
-    cond_wait (&sleeper.cond, &sleep_lock);
-
-  lock_release (&sleep_lock);
+  // Wait until sema_up is called by timer_interrupt
+  sema_down (&sleeper.sema);
 }
 
 /* Sleeps for approximately MS milliseconds.  Interrupts must be
@@ -219,7 +216,9 @@ timer_interrupt (struct intr_frame *args UNUSED)
       if (sleeper->wakeup_tick <= ticks)
         {
           list_remove (e);
-          cond_signal (&sleeper->cond, &sleep_lock);
+
+          // Unblock the sleeping thread
+          sema_up (&sleeper->sema);
         }
 
       e = next;

@@ -305,17 +305,16 @@ cond_wait (struct condition *cond, struct lock *lock)
    this function signals one of them to wake up from its wait.
    LOCK must be held before calling this function.
 
-   If this function is called from an interrupt handler,
-   then the lock precondition is ignored. */
+   An interrupt handler cannot acquire a lock, so it does not
+   make sense to try to signal a condition variable within an
+   interrupt handler. */
 void
 cond_signal (struct condition *cond, struct lock *lock UNUSED)
 {
   ASSERT (cond != NULL);
   ASSERT (lock != NULL);
-  if (!intr_context ())
-    {
-      ASSERT (lock_held_by_current_thread (lock));
-    }
+  ASSERT (!intr_context ());
+  ASSERT (lock_held_by_current_thread (lock));
 
   if (!list_empty (&cond->waiters))
     sema_up (&list_entry (list_pop_front (&cond->waiters),
