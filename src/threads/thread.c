@@ -71,6 +71,8 @@ static void schedule (void);
 void thread_schedule_tail (struct thread *prev);
 static tid_t allocate_tid (void);
 
+bool priorityLessThan (const struct list_elem *a, const struct list_elem *b, void *aux UNUSED);
+
 /* Initializes the threading system by transforming the code
    that's currently running into a thread.  This can't work in
    general and it is possible in this case only because loader.S
@@ -201,6 +203,33 @@ thread_create (const char *name, int priority,
   /* Add to run queue. */
   thread_unblock (t);
 
+  // get priority of both running thread and the thread being unblocked
+  // enum intr_level old_level;
+  
+  // ASSERT (!intr_context ());
+
+  // old_level = intr_disable ();
+
+  // struct thread * cur = thread_current();
+  // bool unblockedThreadGetsPrio = cur->priority < t->priority;
+  
+  // if(unblockedThreadGetsPrio){
+  //   // set current running thread to ready
+  //   if (cur != idle_thread)
+  //     list_push_back (&ready_list, &cur->elem);
+  //   cur->status = THREAD_READY;
+
+  //   // switch to new thread
+  //   ASSERT (intr_get_level () == INTR_OFF);
+  //   ASSERT (cur->status != THREAD_RUNNING);
+  //   ASSERT (is_thread (t));
+
+  //   struct thread * prev = switch_threads (cur, t);
+  //   thread_schedule_tail (prev);
+  
+  //   intr_set_level (old_level);
+
+  // }
   return tid;
 }
 
@@ -492,8 +521,25 @@ next_thread_to_run (void)
 {
   if (list_empty (&ready_list))
     return idle_thread;
-  else
-    return list_entry (list_pop_front (&ready_list), struct thread, elem);
+  else {
+    // return list_entry (list_pop_front (&ready_list), struct thread, elem);
+    enum intr_level oldlevel = intr_disable ();
+    struct list_elem * e = list_begin (&ready_list);
+    struct thread * highestPrioThread = list_entry (e, struct thread, elem);
+
+    while ((e = list_next (e)) != list_end (&ready_list))
+    {
+      struct thread * temp = list_entry (e, struct thread, elem);
+      
+      if(temp->priority > highestPrioThread->priority){
+        highestPrioThread = temp;
+      }
+    }
+
+    list_remove (&highestPrioThread->elem);
+    intr_set_level (oldlevel);
+    return highestPrioThread;
+  }
 }
 
 /* Completes a thread switch by activating the new thread's page
@@ -582,3 +628,13 @@ allocate_tid (void)
 /* Offset of `stack' member within `struct thread'.
    Used by switch.S, which can't figure it out on its own. */
 uint32_t thread_stack_ofs = offsetof (struct thread, stack);
+
+/* Less than function that gets passed in as a parameter
+   to list_insert_ordered() */
+// bool
+// priorityLessThan (const struct list_elem *a, const struct list_elem *b, void *aux UNUSED)
+// {
+//   struct thread *one = list_entry(a, struct thread, elem);
+//   struct thread *two = list_entry(b, struct thread, elem);
+//   return one->priority < two->priority;
+// }
