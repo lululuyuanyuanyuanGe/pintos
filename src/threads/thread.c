@@ -247,7 +247,6 @@ thread_unblock (struct thread *t)
   old_level = intr_disable ();
   ASSERT (t->status == THREAD_BLOCKED);
   list_insert_ordered(&ready_list, &t->elem, priorityLessThan, NULL);
-  // list_push_back (&ready_list, &t->elem);
   t->status = THREAD_READY;
   intr_set_level (old_level);
 }
@@ -319,7 +318,6 @@ thread_yield (void)
   old_level = intr_disable ();
   if (cur != idle_thread) {
     list_insert_ordered(&ready_list, &cur->elem, priorityLessThan, NULL);
-    // list_push_back (&ready_list, &cur->elem);
   }
   cur->status = THREAD_READY;
   schedule (NULL);
@@ -340,7 +338,6 @@ thread_yield_to_another_thread (struct thread * t)
   old_level = intr_disable ();
   if (cur != idle_thread) {
     list_insert_ordered(&ready_list, &cur->elem, priorityLessThan, NULL);
-    // list_push_back (&ready_list, &cur->elem);
   }
   cur->status = THREAD_READY;
   schedule (t);
@@ -364,11 +361,23 @@ thread_foreach (thread_action_func *func, void *aux)
     }
 }
 
-/* Sets the current thread's priority to NEW_PRIORITY. */
+/* Sets the current thread's priority to NEW_PRIORITY. Yield
+   current thread if its priority is no longer the highest
+*/
 void
 thread_set_priority (int new_priority) 
 {
   thread_current ()->priority = new_priority;
+  
+  // Get current highest priority thread
+  if(!list_empty(&ready_list)){
+    int cur_max = list_entry (list_front(&ready_list), 
+    struct thread, elem)->priority;
+    // If priority is no longer the highest, yield
+    if(new_priority < cur_max){
+      thread_yield();
+    }
+  }
 }
 
 /* Returns the current thread's priority. */
@@ -527,20 +536,6 @@ next_thread_to_run (void)
     return idle_thread;
   else {
     return list_entry (list_pop_front (&ready_list), struct thread, elem);
-    // struct list_elem * e = list_begin (&ready_list);
-    // struct thread * highestPrioThread = list_entry (e, struct thread, elem);
-
-    // while ((e = list_next (e)) != list_end (&ready_list))
-    // {
-    //   struct thread * temp = list_entry (e, struct thread, elem);
-      
-    //   if(temp->priority > highestPrioThread->priority){
-    //     highestPrioThread = temp;
-    //   }
-    // }
-
-    // list_remove (&highestPrioThread->elem);
-    // return highestPrioThread;
   }
 }
 
