@@ -71,7 +71,7 @@ static void schedule (struct thread * t);
 void thread_schedule_tail (struct thread *prev);
 static tid_t allocate_tid (void);
 
-bool priorityLessThan (const struct list_elem *a, const struct list_elem *b, void *aux UNUSED);
+bool priority_less_than (const struct list_elem *a, const struct list_elem *b, void *aux UNUSED);
 void thread_yield_to_another_thread (struct thread * t);
 /* Initializes the threading system by transforming the code
    that's currently running into a thread.  This can't work in
@@ -246,7 +246,7 @@ thread_unblock (struct thread *t)
 
   old_level = intr_disable ();
   ASSERT (t->status == THREAD_BLOCKED);
-  list_insert_ordered(&ready_list, &t->elem, priorityLessThan, NULL);
+  list_insert_ordered(&ready_list, &t->elem, priority_less_than, NULL);
   t->status = THREAD_READY;
   intr_set_level (old_level);
 }
@@ -317,7 +317,7 @@ thread_yield (void)
 
   old_level = intr_disable ();
   if (cur != idle_thread) {
-    list_insert_ordered(&ready_list, &cur->elem, priorityLessThan, NULL);
+    list_insert_ordered(&ready_list, &cur->elem, priority_less_than, NULL);
   }
   cur->status = THREAD_READY;
   schedule (NULL);
@@ -337,7 +337,7 @@ thread_yield_to_another_thread (struct thread * t)
 
   old_level = intr_disable ();
   if (cur != idle_thread) {
-    list_insert_ordered(&ready_list, &cur->elem, priorityLessThan, NULL);
+    list_insert_ordered(&ready_list, &cur->elem, priority_less_than, NULL);
   }
   cur->status = THREAD_READY;
   schedule (t);
@@ -638,7 +638,7 @@ uint32_t thread_stack_ofs = offsetof (struct thread, stack);
 /* Less than function that gets passed in as a parameter
    to list_insert_ordered(). Returns true if b < a */
 bool
-priorityLessThan (const struct list_elem *a, const struct list_elem *b, void *aux UNUSED)
+priority_less_than (const struct list_elem *a, const struct list_elem *b, void *aux UNUSED)
 {
   struct thread *one = list_entry(a, struct thread, elem);
   struct thread *two = list_entry(b, struct thread, elem);
