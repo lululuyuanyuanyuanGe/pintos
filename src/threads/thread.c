@@ -372,7 +372,7 @@ thread_set_priority (int new_priority)
   
   // Get current highest priority thread
   if(!list_empty(&ready_list)){
-    int cur_max = list_entry (list_front(&ready_list), 
+    int cur_max = list_entry(list_front(&ready_list), 
     struct thread, elem)->priority;
     // If priority is no longer the highest, yield
     if(new_priority < cur_max){
