@@ -68,7 +68,9 @@ sema_down (struct semaphore *sema)
   old_level = intr_disable ();
   while (sema->value == 0)
     {
-      list_push_back (&sema->waiters, &thread_current ()->elem);
+      // Insert into waiting list in order
+      list_insert_ordered(&sema->waiters, &thread_current ()->elem,
+        priority_less_than, NULL);
       thread_block ();
     }
   sema->value--;
@@ -104,7 +106,11 @@ sema_try_down (struct semaphore *sema)
 /* Up or "V" operation on a semaphore.  Increments SEMA's value
    and wakes up one thread of those waiting for SEMA, if any.
 
-   This function may be called from an interrupt handler. */
+   This function may be called from an interrupt handler. 
+   
+   If the thread that is woken up has higher priority than
+   the current thread, yield the current thread ONLY IF
+   it is not being called from an interrupt handler */
 void
 sema_up (struct semaphore *sema)
 {
@@ -113,11 +119,30 @@ sema_up (struct semaphore *sema)
   ASSERT (sema != NULL);
 
   old_level = intr_disable ();
-  if (!list_empty (&sema->waiters))
-    thread_unblock (list_entry (list_pop_front (&sema->waiters),
-                                struct thread, elem));
+
+  bool higherPrio = false;
+  struct thread * t = NULL;
+  if (!list_empty (&sema->waiters)){
+    struct thread * temp = list_entry (
+      list_pop_front (&sema->waiters), struct thread, elem);
+    thread_unblock (temp);
+
+    // Check if new thread that is woken up has higher priorty
+    // than current thread
+    if(temp->priority > thread_current() ->priority){
+      higherPrio = true;
+      t = temp;
+    }
+  }
   sema->value++;
   intr_set_level (old_level);
+  
+  // Yield if higher priority, BUT make sure sema_up is not
+  // being called from an interrupt handler, because we want
+  // the interrupt handler to finish
+  if(!intr_context () && higherPrio){
+    thread_yield();
+  }
 }
 
 static void sema_test_helper (void *sema_);

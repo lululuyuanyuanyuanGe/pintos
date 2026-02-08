@@ -72,7 +72,8 @@ static void schedule (struct thread * t);
 void thread_schedule_tail (struct thread *prev);
 static tid_t allocate_tid (void);
 
-bool priority_less_than (const struct list_elem *a, const struct list_elem *b, void *aux UNUSED);
+bool priority_less_than (const struct list_elem *a, 
+  const struct list_elem *b, void *aux UNUSED);
 void thread_yield_to_another_thread (struct thread * t);
 /* Initializes the threading system by transforming the code
    that's currently running into a thread.  This can't work in
@@ -372,7 +373,7 @@ thread_set_priority (int new_priority)
   
   // Get current highest priority thread
   if(!list_empty(&ready_list)){
-    int cur_max = list_entry(list_front(&ready_list), 
+    int cur_max = list_entry (list_front(&ready_list), 
     struct thread, elem)->priority;
     // If priority is no longer the highest, yield
     if(new_priority < cur_max){
