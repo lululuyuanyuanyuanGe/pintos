@@ -19,6 +19,9 @@ enum thread_status
 typedef int tid_t;
 #define TID_ERROR ((tid_t) -1)          /* Error value for tid_t. */
 
+/* Forward declaration for priority donation. */
+struct lock;
+
 /* Thread priorities. */
 #define PRI_MIN 0                       /* Lowest priority. */
 #define PRI_DEFAULT 31                  /* Default priority. */
@@ -88,10 +91,14 @@ struct thread
     char name[16];                      /* Name (for debugging purposes). */
     uint8_t *stack;                     /* Saved stack pointer. */
     int priority;                       /* Priority. */
-    struct list_elem allelem;           /* List element for all threads list. */
+    int base_priority;                  /* Base priority. */
+    struct list donation_threads;       /* List of threads donating to this thread. */
+    struct lock *wait_on_lock;          /* Lock the thread is waiting on. */
+    struct list_elem allelem;           /* List element for all threads list. the hooker */
 
     /* Shared between thread.c and synch.c. */
-    struct list_elem elem;              /* List element. */
+    struct list_elem elem;              /* List element. the hooker*/
+    struct list_elem donation_elem;     /* This serves as the hooker in the donation_threads*/
 
 #ifdef USERPROG
     /* Owned by userprog/process.c. */
@@ -132,6 +139,8 @@ void thread_foreach (thread_action_func *, void *);
 
 int thread_get_priority (void);
 void thread_set_priority (int);
+void thread_update_priority (struct thread *t);
+
 
 int thread_get_nice (void);
 void thread_set_nice (int);
@@ -140,6 +149,8 @@ int thread_get_load_avg (void);
 
 // Less than function for list_insert_ordered()
 bool priority_less_than (const struct list_elem *a, 
+   const struct list_elem *b, void *aux UNUSED);
+bool donation_greater_than (const struct list_elem *a, 
    const struct list_elem *b, void *aux UNUSED);
 
 // A version of yield that schedules a specific thread

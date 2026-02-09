@@ -221,7 +221,29 @@ lock_acquire (struct lock *lock)
   ASSERT (!intr_context ());
   ASSERT (!lock_held_by_current_thread (lock));
 
+  struct thread *cur = thread_current();
+  cur->wait_on_lock = lock;
+  if (lock->holder != NULL) 
+  {
+    struct thread* lock_holding_thread = lock->holder;
+    // add the current thread to the lock holder's donation threads
+    list_insert_ordered(&lock_holding_thread->donation_threads, &cur->donation_elem, donation_greater_than, NULL);
+  }
+
+  struct lock *lock_iter = lock;
+  // here we will handle the nested priority donation
+  // Make it a creitical session, so no race condition
+  enum intr_level old_level = intr_disable();
+  while (lock_iter != NULL && lock_iter->holder !=NULL)
+  {
+    struct thread* holder = lock_iter->holder;
+    thread_update_priority(holder); // if this is the nested lock, the holder is on some other thread's donation list, update it's priority will propagate the effect to that thread eventually
+    lock_iter = holder->wait_on_lock;
+  }
+  intr_set_level(old_level);
   sema_down (&lock->semaphore);
+
+  cur->wait_on_lock = NULL; // we got the lock, so we are no longer waiting for it
   lock->holder = thread_current ();
 }
 
@@ -255,6 +277,27 @@ lock_release (struct lock *lock)
 {
   ASSERT (lock != NULL);
   ASSERT (lock_held_by_current_thread (lock));
+
+  struct thread* cur = thread_current();
+  struct list_elem* e = list_begin(&cur->donation_threads);
+  
+  // remove the threads that is holding the same lock from the donation_threads list
+  while (e != list_end(&cur->donation_threads))
+  {
+    struct thread* t = list_entry(e, struct thread, donation_elem);
+    if (t->wait_on_lock == lock)
+    {
+      e = list_remove(e);
+    }
+    else
+    {
+      e = list_next(e);
+    }
+  }
+
+  // recalculate the priority, compare the base priority of thread with the donation_threads' priorty
+  cur->priority = cur->base_priority;
+  thread_update_priority(cur);
 
   lock->holder = NULL;
   sema_up (&lock->semaphore);

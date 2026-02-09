@@ -369,7 +369,7 @@ thread_foreach (thread_action_func *func, void *aux)
 void
 thread_set_priority (int new_priority) 
 {
-  thread_current ()->priority = new_priority;
+  thread_current ()->base_priority = new_priority;
   
   // Get current highest priority thread
   if(!list_empty(&ready_list)){
@@ -506,6 +506,9 @@ init_thread (struct thread *t, const char *name, int priority)
   strlcpy (t->name, name, sizeof t->name);
   t->stack = (uint8_t *) t + PGSIZE;
   t->priority = priority;
+  t->base_priority = priority;
+  list_init (&t->donation_threads);
+  t->wait_on_lock = NULL;
   t->magic = THREAD_MAGIC;
 
   old_level = intr_disable ();
@@ -646,3 +649,35 @@ priority_less_than (const struct list_elem *a, const struct list_elem *b, void *
   struct thread *two = list_entry(b, struct thread, elem);
   return one->priority > two->priority;
 }
+
+/* This function usually called after a thread donation happens, it just simply
+update the t's priority if the donation list has a higher priority*/
+void thread_update_priority (struct thread *t){
+  if (!list_empty(&t->donation_threads)){
+    struct list_elem *e = list_begin(&t->donation_threads);
+    struct thread *highest_donate_thread = list_entry(e, struct thread, donation_elem);
+    int highest_donate_priority = highest_donate_thread->priority;
+    int base_priority = t->base_priority;
+    if (base_priority > highest_donate_priority)
+    {
+      t->priority = base_priority;
+    }
+    else
+    {t->priority = highest_donate_priority;}
+  }
+  else 
+  {
+    t->priority = t->base_priority;
+  }
+  // now we need to update the threads' order in the ready list
+  list_sort(&ready_list, priority_less_than, NULL);
+};
+
+
+/* hlper function for comparing the priority, return a < b*/
+bool donation_greater_than (const struct list_elem *a, const struct list_elem *b, void *aux UNUSED)
+{
+  struct thread *one = list_entry(a, struct thread, donation_elem);
+  struct thread *two = list_entry(b, struct thread, donation_elem);
+  return one->priority > two->priority;
+};
