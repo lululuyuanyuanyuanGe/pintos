@@ -44,13 +44,16 @@ test_priority_fifo (void)
 
   msg ("%d threads will iterate %d times in the same order each time.",
        THREAD_CNT, ITER_CNT);
-  msg ("If the order varies then there is a bug.");
+  // msg ("If the order varies then there is a bug.");
 
   output = op = malloc (sizeof *output * THREAD_CNT * ITER_CNT * 2);
+  msg ("malloc success?");
   ASSERT (output != NULL);
   lock_init (&lock);
+  // msg ("lock init success?");
 
   thread_set_priority (PRI_DEFAULT + 2);
+  // msg ("main thread priority upgrade success?");
   for (i = 0; i < THREAD_CNT; i++) 
     {
       char name[16];
