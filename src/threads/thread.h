@@ -5,6 +5,12 @@
 #include <list.h>
 #include <stdint.h>
 
+struct child_info;
+struct file;
+
+// Max file descriptors per process
+#define MAX_FD 128
+
 /* States in a thread's life cycle. */
 enum thread_status
   {
@@ -18,9 +24,6 @@ enum thread_status
    You can redefine this to whatever type you like. */
 typedef int tid_t;
 #define TID_ERROR ((tid_t) -1)          /* Error value for tid_t. */
-
-/* Forward declaration for priority donation. */
-struct lock;
 
 /* Thread priorities. */
 #define PRI_MIN 0                       /* Lowest priority. */
@@ -91,18 +94,31 @@ struct thread
     char name[16];                      /* Name (for debugging purposes). */
     uint8_t *stack;                     /* Saved stack pointer. */
     int priority;                       /* Priority. */
-    int base_priority;                  /* Base priority. */
-    struct list donation_threads;       /* List of threads donating to this thread. */
-    struct lock *wait_on_lock;          /* Lock the thread is waiting on. */
-    struct list_elem allelem;           /* List element for all threads list. the hooker */
+    struct list_elem allelem;           /* List element for all threads list. */
 
     /* Shared between thread.c and synch.c. */
-    struct list_elem elem;              /* List element. the hooker*/
-    struct list_elem donation_elem;     /* This serves as the hooker in the donation_threads*/
+    struct list_elem elem;              /* List element. */
 
 #ifdef USERPROG
     /* Owned by userprog/process.c. */
     uint32_t *pagedir;                  /* Page directory. */
+
+    /* List of this thread's children. Each element is a
+       struct child_info defined in process.c */
+    struct list children;
+
+    /* Points to the processes child_info in its parents
+       children list. Used by the child to send its exit status */
+    struct child_info *child_info_in_parent;
+
+    // Exit status for this process
+    int exit_status;
+
+    // File descriptor table
+    struct file *fd_table[MAX_FD];
+
+    // List to keep track of all acquired locks
+    struct list acquired_locks;
 #endif
 
     /* Owned by thread.c. */
@@ -139,21 +155,10 @@ void thread_foreach (thread_action_func *, void *);
 
 int thread_get_priority (void);
 void thread_set_priority (int);
-void thread_update_priority (struct thread *t);
-
 
 int thread_get_nice (void);
 void thread_set_nice (int);
 int thread_get_recent_cpu (void);
 int thread_get_load_avg (void);
-
-// Less than function for list_insert_ordered()
-bool priority_less_than (const struct list_elem *a, 
-   const struct list_elem *b, void *aux UNUSED);
-bool donation_greater_than (const struct list_elem *a, 
-   const struct list_elem *b, void *aux UNUSED);
-
-// A version of yield that schedules a specific thread
-void thread_yield_to_another_thread (struct thread * t);
 
 #endif /* threads/thread.h */

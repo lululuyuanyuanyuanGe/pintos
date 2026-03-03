@@ -21,6 +21,9 @@ FirstName LastName <email@domain.example>
 >> preparing your submission, other than the Pintos documentation, course
 >> text, lecture notes, and course staff.
 
+- https://stackoverflow.com/questions/63984264/how-do-i-only-print-out-the-last-two-digits-of-a-hexadecimal-number
+- https://stackoverflow.com/questions/8977836/strtok-s-behaviour-with-consecutive-delimiters
+
                ARGUMENT PASSING
                ================
 
@@ -29,6 +32,61 @@ FirstName LastName <email@domain.example>
 >> A1: Copy here the declaration of each new or changed `struct' or
 >> `struct' member, global or static variable, `typedef', or
 >> enumeration.  Identify the purpose of each in 25 words or less.
+
+// Data structure that represents a child process in a parent's list
+struct child_info
+  {
+    tid_t tid;                /* child's thread id */
+    int exit_status;          /* exit code set by the child */
+    bool waited;              /* prevent parent calling multiple waits */
+    struct semaphore sema;    /* to block parent until child exits */
+    struct list_elem elem;    /* element in parent's 'children' list */
+  };
+
+/* Data structure that store info that the child will need on start.
+   Passed in as AUX in the thread_create function */
+struct process_start_info
+  {
+    char *file_name;       // Full command line copy 
+    char *prog_name;       // Just the program name 
+    struct child_info *ci;
+  };
+
+struct thread
+  {
+    /* Owned by thread.c. */
+    tid_t tid;                          /* Thread identifier. */
+    enum thread_status status;          /* Thread state. */
+    char name[16];                      /* Name (for debugging purposes). */
+    uint8_t *stack;                     /* Saved stack pointer. */
+    int priority;                       /* Priority. */
+    struct list_elem allelem;           /* List element for all threads list. */
+
+    /* Shared between thread.c and synch.c. */
+    struct list_elem elem;              /* List element. */
+
+#ifdef USERPROG
+    /* Owned by userprog/process.c. */
+    uint32_t *pagedir;                  /* Page directory. */
+
+    /* List of this thread's children. Each element is a
+       struct child_info defined in process.c */
+    struct list children;
+
+    /* Points to the processes child_info in its parents
+       children list. Used by the child to send its exit status */
+    struct child_info *child_info_in_parent;
+
+    // Exit status for this process
+    int exit_status;
+
+    // File descriptor table
+    struct file *fd_table[MAX_FD];
+#endif
+
+    /* Owned by thread.c. */
+    unsigned magic;                     /* Detects stack overflow. */
+  };
 
 ---- ALGORITHMS ----
 
