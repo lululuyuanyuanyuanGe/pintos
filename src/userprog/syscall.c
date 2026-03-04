@@ -5,6 +5,7 @@
 #include "threads/thread.h"
 #include "threads/vaddr.h"
 #include "userprog/pagedir.h"
+#include "userprog/process.h"
 #include "filesys/filesys.h"
 #include "filesys/file.h"
 #include "devices/shutdown.h"
@@ -269,7 +270,8 @@ static void syscall_handler (struct intr_frame *f)
         exit(-1);
         return;
       }
-      // TODO: implement exec
+      const char *cmd_line = (const char *)args[1];
+      f->eax = process_execute (cmd_line);
       break;
     }
     case SYS_WAIT:
@@ -279,7 +281,8 @@ static void syscall_handler (struct intr_frame *f)
         exit(-1);
         return;
       }
-      // TODO: implement wait
+      tid_t pid = (tid_t)args[1];
+      f->eax = process_wait (pid);
       break;
     }
     case SYS_CREATE:

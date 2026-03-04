@@ -7,6 +7,7 @@
 #include <string.h>
 #include "userprog/gdt.h"
 #include "userprog/pagedir.h"
+#include "userprog/syscall.h"
 #include "userprog/tss.h"
 #include "filesys/directory.h"
 #include "filesys/file.h"
@@ -29,7 +30,11 @@ struct child_info
     tid_t tid;                /* child's thread id */
     int exit_status;          /* exit code set by the child */
     bool waited;              /* prevent parent calling multiple waits */
+    bool exited;              /* true after child has exited */
+    struct thread *child_thread; /* pointer to child thread, for cleanup */
     struct semaphore sema;    /* to block parent until child exits */
+    struct semaphore load_sema; /* to block parent until child finishes loading */
+    bool load_success;          /* whether the child's executable loaded successfully */
     struct list_elem elem;    /* element in parent's 'children' list */
   };
 
@@ -84,7 +89,11 @@ process_execute (const char *file_name)
   ci->tid = -1; // filled in once thread_create returns tid
   ci->exit_status = -1; // will be set during exit() system call
   ci->waited = false;
+  ci->exited = false;
+  ci->child_thread = NULL; // set by child in start_process
   sema_init (&ci->sema, 0);
+  sema_init (&ci->load_sema, 0); // parent sleeps here until child finishes loading
+  ci->load_success = false;
 
   // Initialize process_start_info
   struct process_start_info *psi;
@@ -114,6 +123,18 @@ process_execute (const char *file_name)
   // Record child's tid in status struct and add to our list
   ci->tid = tid;
   list_push_back (&thread_current ()->children, &ci->elem);
+
+  // Sleep until child signals that it has finished loading
+  sema_down (&ci->load_sema);
+
+  // If load failed, remove child from list and clean up
+  if (!ci->load_success)
+    {
+      list_remove (&ci->elem);
+      free (ci);
+      return TID_ERROR;
+    }
+
   return tid;
 }
 
@@ -132,6 +153,7 @@ start_process (void *process_info)
   /* Store pointer to our child_info so that process_exit can find it
      and use it to store the exit status */
   thread_current ()->child_info_in_parent = ci;
+  ci->child_thread = thread_current ();
 
   /* Initialize file descriptor table: reserve 0 and 1 for stdin/stdout */
   struct thread *cur = thread_current ();
@@ -147,12 +169,16 @@ start_process (void *process_info)
   if_.eflags = FLAG_IF | FLAG_MBS;
   success = load (file_name, prog_name, &if_.eip, &if_.esp);
 
+  /* Signal parent with load result before freeing psi */
+  ci->load_success = success;
+  sema_up (&ci->load_sema);
+
   /* If load failed, quit. */
   palloc_free_page (file_name);
   free (prog_name);
   free (psi);
-  if (!success) 
-    thread_exit ();
+  if (!success)
+    exit (-1);
 
   /* Start the user process by simulating a return from an
      interrupt, implemented by intr_exit (in
@@ -230,6 +256,13 @@ process_exit (void)
   struct thread *cur = thread_current ();
   uint32_t *pd;
 
+  /* Close the executable file, re-enabling writes */
+  if (cur->executable != NULL)
+    {
+      file_close (cur->executable);
+      cur->executable = NULL;
+    }
+
   /* Close all open files */
   for (int i = 2; i < MAX_FD; i++)
     {
@@ -246,19 +279,25 @@ process_exit (void)
   if (cur->child_info_in_parent != NULL)
     {
       cur->child_info_in_parent->exit_status = cur->exit_status;
+      cur->child_info_in_parent->exited = true;
       sema_up (&cur->child_info_in_parent->sema);
     }
 
-  // Free children list
+  /* Free children list. For children still alive, nullify their
+     pointer back to us so they don't write to freed memory. */
+  enum intr_level old_level = intr_disable ();
   struct list_elem *e = list_begin(&cur->children);
   while (e != list_end(&cur->children))
     {
       struct list_elem *next = list_next(e);
       struct child_info *child = list_entry(e, struct child_info, elem);
+      if (!child->exited)
+        child->child_thread->child_info_in_parent = NULL;
       list_remove(e);
       free(child);
       e = next;
     }
+  intr_set_level (old_level);
 
   // Release all the locks that this process was holding
   while (!list_empty(&cur->acquired_locks))
@@ -485,7 +524,13 @@ load (const char *file_name, const char *prog_name,
 
  done:
   /* We arrive here whether the load is successful or not. */
-  file_close (file);
+  if (success)
+    {
+      file_deny_write (file);
+      t->executable = file;
+    }
+  else
+    file_close (file);
   return success;
 }
 
@@ -612,18 +657,17 @@ setup_stack (void **esp, char *file_name)
       if (success){
         *esp = PHYS_BASE;
 
-        bool space_before = false;
-        int argc = 1; // Starts at one to include filename
+        bool in_word = false;
+        int argc = 0; // Starts at one to include filename
         for (int i = 0; file_name[i] != '\0'; i++) {
-          if (file_name[i] == ' ')
-            {
-              if (!space_before) {
-                argc++; // Each space represents an argument
-                space_before = true;
-              }
-            }
+          if (file_name[i] == ' ') {
+            in_word = false;
+          }
           else {
-            space_before = false;
+            if (!in_word) {
+              argc += 1;
+              in_word = true;
+            }
           }
         }
         const int SENTINEL = 4;

@@ -117,6 +117,9 @@ struct thread
     // File descriptor table
     struct file *fd_table[MAX_FD];
 
+    // Executable file, kept open to deny writes
+    struct file *executable;
+
     // List to keep track of all acquired locks
     struct list acquired_locks;
 #endif
